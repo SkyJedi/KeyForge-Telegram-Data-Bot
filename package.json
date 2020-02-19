@@ -1,0 +1,36 @@
+{
+  "name": "keyforge-telegram-data-bot",
+  "version": "1.0.0",
+  "description": "telegram bot for KeyForge",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "debug": "nodemon index.js"
+  },
+  "author": "SkyJedi",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "axios": "^0.19.0",
+    "canvas": "^2.6.0",
+    "firebase": "^7.2.1",
+    "firebase-admin": "^8.6.1",
+    "fuse.js": "^3.4.6",
+    "js-levenshtein": "^1.1.6",
+    "lodash": "^4.17.15",
+    "path": "^0.12.7",
+    "qrcode": "^1.4.1",
+    "telegraf": "^3.36.0",
+    "twilio": "^3.36.0",
+    "uuid": "latest"
+  },
+  "nodemonConfig": {
+    "ignore": [
+      "card_images/",
+      "fonts/",
+      "card_data/"
+    ]
+  },
+  "devDependencies": {
+    "nodemon": "^1.19.2"
+  }
+}
