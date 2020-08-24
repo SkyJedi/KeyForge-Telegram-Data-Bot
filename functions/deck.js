@@ -32,8 +32,9 @@ const buildDeck = (ctx, deck, flags) => {
 			[mavericks, legacy, anomaly].filter(type => type).join(' • ') + '\n';
 		description += `${dokStats.sas}  •  ${dokStats.sasStar}\n${dokStats.deckAERC}\n`;
 		description += `[Official](https://www.keyforgegame.com/deck-details/${deck.id}?powered_by=archonMatrixTelegram) • [Decks of KeyForge](https://decksofkeyforge.com/decks/${deck.id}?powered_by=archonMatrixTelegram)`;
-
-		main.sendImageMessage(ctx, `${deck.name} • ${set} • ${description}`, attachment.toBuffer());
+		const dataUrl = attachment.toDataURL({ format: 'jpeg', quality: 0.7 }).replace('data:image/jpeg;base64,', '');
+		attachment.dispose();
+		main.sendImageMessage(ctx, `${deck.name} • ${set} • ${description}`, Buffer.from(dataUrl, 'base64'));
 	}).catch(console.error);
 };
 

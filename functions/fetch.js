@@ -2,8 +2,8 @@ const axios = require('axios');
 const Fuse = require('fuse.js');
 const levenshtein = require('js-levenshtein');
 const { db } = require('./firestore');
-const uuid = require('uuid/v4');
-const { get, filter, findIndex, sortBy, round, shuffle } = require('lodash');
+const uuid = require('uuid').v4;
+const { get, filter, findIndex, sortBy, round, shuffle, uniqBy } = require('lodash');
 
 const { deckSearchAPI, dokAPI, dokKey, twilioAccountSid, twilioToken, twilioSender, twilioReceiver } = require('../config');
 const { langs, sets, houses, cardTypes } = require('../card_data');
@@ -186,8 +186,9 @@ const sasStarRating = (x) => {
 };
 
 const fetchCard = (search, flags) => {
-	const set = getFlagSet(flags),
-		lang = getFlagLang(flags);
+	const set = getFlagSet(flags);
+	const lang = getFlagLang(flags);
+	const house = getFlagHouse(flags)[0];
 	const options = {
 		shouldSort: true,
 		tokenize: true,
@@ -197,28 +198,36 @@ const fetchCard = (search, flags) => {
 		keys: [
 			{
 				name: 'card_number',
-				weight: 0.3,
+				weight: 0.3
 			}, {
 				name: 'card_title',
-				weight: 0.7,
-			}],
+				weight: 0.7
+			}]
 	};
-	const cards = (set ? require(`../card_data/${lang}/${set}`) : require(`../card_data/`)[lang]);
+	let cards = (set ? require(`../card_data/${lang}/${set}`) : require(`../card_data/`)[lang]);
+	if (house) {
+		cards = cards.filter(x => x.house === house);
+	}
 	const fuse = new Fuse(cards, options);
 	let results = fuse.search(search);
-	if(0 >= results.length) return;
+	if (0 >= results.length) return;
 	results = results.filter(result => result.score === results[0].score);
 	results = results.map(result => {
 		result.score = levenshtein(result.item.card_title, search);
 		return result;
 	});
 	results = sortBy(results, ['score']);
-	return get(results, '[0].item');
+	let final = get(results, '[0].item');
+	if (final) {
+		final = cards.filter(x => x.card_title === final.card_title);
+		final = sortBy(final, 'expansion').reverse()[0];
+	}
+	return final;
 };
 const fetchReprints = (card, flags) => {
 	const lang = getFlagLang(flags);
 	const cards = require(`../card_data/`)[lang];
-	return cards.filter(x => x.card_title === card.card_title);
+	return uniqBy(cards.filter(x => x.card_title === card.card_title), 'card_number');
 };
 const fetchText = (search, flags, type = 'card_text') => {
 	const set = getFlagSet(flags),
@@ -266,7 +275,7 @@ const getCardLink = (card) => {
 const getFlagCardType = (flags) => get(filter(cardTypes, cardType => flags.includes(cardType.toLowerCase())), '[0]');
 const getFlagSet = (flags) => get(filter(sets, set => flags.includes(set.flag.toLowerCase())), '[0].set_number');
 const getSet = (number) => get(sets.filter(set => number === set.set_number), '[0].flag', 'ERROR');
-const getFlagHouse = (flags) => houses[filter(Object.keys(houses), house => flags.includes(house))];
+const getFlagHouse = (flags) => flags.filter(x => Object.keys(houses).includes(x)).map(x => houses[x]).sort();
 const getFlagLang = (flags) => get(filter(flags, flag => langs.includes(flag)), '[0]', 'en');
 const getFlagNumber = (flags, defaultNumber = 0) => +(get(filter(flags, flag => Number.isInteger(+flag)), '[0]', defaultNumber));
 
