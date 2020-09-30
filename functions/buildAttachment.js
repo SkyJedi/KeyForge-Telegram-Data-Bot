@@ -63,9 +63,7 @@ const buildAttachment = async (data, flags = []) => {
         cardX += card.width + 5;
         canvas.renderAll();
     }
-    const dataUrl = canvas.toDataURL({ format: 'jpeg', quality: 0.7 }).replace('data:image/jpeg;base64,', '');
-    canvas.dispose();
-    return Buffer.from(dataUrl, 'base64');
+    return canvas;
 };
 
 const loadImage = (imgPath) => {

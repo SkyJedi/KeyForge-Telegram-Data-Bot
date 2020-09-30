@@ -62,8 +62,9 @@ const buildDeckList = ({ houses, cards, expansion, ...deck }, lang = 'en') => {
             start: { x: 58, y: 165 }
         };
         const qrCode = new Promise(qrRes => {
-            QRCode.toDataURL(`https://www.keyforgegame.com/deck-details/${deck.id}`, { margin: 0 })
-                  .then(url => fabric.Image.fromURL(url, img => qrRes(img)));
+            QRCode.toCanvas(fabric.util.createCanvasElement(),
+                `https://www.keyforgegame.com/${deck.uuid}`,
+                { margin: 0 }, (err, qr) => qrRes(new fabric.Image(qr)))
         });
         const title = getCircularText(deck.name, 1600, 60);
         Promise.all([cardBack, Common, Uncommon, Rare, Special, qrCode, set, title, crest])
@@ -195,9 +196,8 @@ const buildDeckList = ({ houses, cards, expansion, ...deck }, lang = 'en') => {
 };
 
 const getCurvedFontSize = (length) => {
-    const size = (30 / length) * 30;
-    if (size > 30) return 40;
-    return size;
+    if (length < 30) return 42;
+    return 35 / (length / 35);
 };
 
 const loadImage = (imgPath) => {
