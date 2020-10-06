@@ -14,8 +14,7 @@ const cards = async (ctx, params, flags) => {
                                       .join(' • ')}](${getCardLink(card)})`;
             return title + ' • ' + value;
         }).join('\n');
-        main.sendImageMessage(ctx, text, attachment.createJPEGStream());
-        attachment.dispose();
+        main.sendImageMessage(ctx, text, attachment);
     }
 ;
 

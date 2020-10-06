@@ -16,8 +16,7 @@ const randomHand = async (ctx, params, flags) => {
         //build Title
         const text = '**Random hand from ' + deck.name + '**';
         const attachment = await buildAttachment(randomCards, flags);
-        main.sendImageMessage(ctx, text, attachment.createJPEGStream());
-        attachment.dispose();
+        main.sendImageMessage(ctx, text, attachment);
     }
 
 };

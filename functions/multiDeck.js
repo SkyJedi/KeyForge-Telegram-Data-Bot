@@ -18,7 +18,9 @@ const multiDeck = async (message, params, flags) => {
     }
     canvas.renderAll();
     const name = decks.map(deck => deck.name).join(' vs ');
-    main.sendImageMessage(message, name, canvas.createJPEGStream());
+    const stream = canvas.createJPEGStream()
+    stream.on('end', () => canvas.dispose());
+    main.sendImageMessage(message, name, stream);
     canvas.dispose();
 }
 

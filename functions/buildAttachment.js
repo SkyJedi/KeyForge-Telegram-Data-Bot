@@ -63,7 +63,9 @@ const buildAttachment = async (data, flags = []) => {
         cardX += card.width + 5;
         canvas.renderAll();
     }
-    return canvas;
+    const stream = canvas.createJPEGStream()
+    stream.on('end', () => canvas.dispose());
+    return stream;
 };
 
 const loadImage = (imgPath) => {
