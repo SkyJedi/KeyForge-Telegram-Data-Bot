@@ -133,25 +133,16 @@ const fetchDoK = (deckID) => {
 	return new Promise(resolve => {
 		axios.get(`${dokAPI}${deckID}`, dokKey).then(response => {
 			if(response.data) {
-				const {
-						amberControl: A = 0, expectedAmber: E = 0,
-						artifactControl: R = 0, creatureControl: C = 0,
-						efficiency: F = 0, disruption: D = 0, effectivePower: P = 0,
-						sasRating = 0, sasPercentile = 0, aercScore = 0
-					} = response.data.deck,
-					sas = `${round(sasRating, 2)} SAS • ${round(aercScore, 2)} AERC`,
-					deckAERC = `A: ${round(A, 2)} • E: ${round(E, 2)} • R: ${round(R, 2)} • C: ${round(C, 2)} • F: ${round(F, 2)} • D: ${round(D,
-						2)} • P: ${round(P, 2)}`,
+				const { sasRating = 0, sasPercentile = 0 } = response.data.deck,
+					sas = `${round(sasRating, 2)} SAS`,
 					sasStar = sasStarRating(sasPercentile);
-				resolve({ sas, deckAERC, sasStar });
+				resolve({ sas, sasStar });
 			} else resolve({
 				sas: 'Unable to Retrieve SAS',
-				deckAERC: 'Unable to Retrieve AERC',
 				sasStar: 'Unable to Retrieve sasStars',
 			});
 		}).catch(() => resolve({
 			sas: 'Unable to Retrieve SAS',
-			deckAERC: 'Unable to Retrieve AERC',
 			sasStar: 'Unable to Retrieve sasStars',
 		}));
 	});

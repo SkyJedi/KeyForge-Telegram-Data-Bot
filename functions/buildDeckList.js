@@ -5,6 +5,14 @@ const card_titles = require('../card_data/card_titles');
 const houses_languages = require('../card_data/houses_languages');
 const { sets } = require('../card_data/index');
 const { get } = require('lodash');
+const shadowProps = { color: 'gray', offsetX: 10, offsetY: 10, blur: 3 };
+const fontProps = {
+    fontWeight: 800,
+    fontFamily: 'Keyforge',
+    textAlign: 'left',
+    fill: 'black',
+    fontSize: 20
+};
 
 fabric.nodeCanvas.registerFont(path.join(__dirname, '../fonts/Oswald-Regular.ttf'), {
     family: 'Keyforge',
@@ -38,7 +46,7 @@ fabric.nodeCanvas.registerFont(path.join(__dirname, '../fonts/BlackHanSans-Regul
 });
 
 const buildDeckList = ({ houses, cards, expansion, ...deck }, lang = 'en') => {
-    return new Promise(res => {
+    return new Promise(async res => {
         const canvas = new fabric.StaticCanvas('decklist');
         canvas.setDimensions({ width: 600, height: 840 });
         const Common = loadImage('../card_images/cardback/rarity/Common.png');
@@ -53,39 +61,48 @@ const buildDeckList = ({ houses, cards, expansion, ...deck }, lang = 'en') => {
 
         const houseData = {
             size: 35,
-            0: { x: 55, y: 124 },
-            1: { x: 55, y: 502 },
-            2: { x: 310, y: 219 }
+            0: { x: 55, y: 132 },
+            1: { x: 55, y: 510 },
+            2: { x: 310, y: 227 }
         };
         const cardData = {
             size: 20,
-            start: { x: 58, y: 165 }
+            start: { x: 58, y: 173 }
         };
+        const lineStyle = { fill: 'black', stroke: 'black', strokeWidth: 2 };
         const qrCode = new Promise(qrRes => {
             QRCode.toCanvas(fabric.util.createCanvasElement(),
-                `https://www.keyforgegame.com/${deck.uuid}`,
-                { margin: 0 }, (err, qr) => qrRes(new fabric.Image(qr)))
+                `https://www.keyforgegame.com/deck-details/${deck.id}`,
+                { margin: 3 }, (err, qr) => qrRes(new fabric.Image(qr)));
         });
-        const title = getCircularText(deck.name, 1600, 60);
-        Promise.all([cardBack, Common, Uncommon, Rare, Special, qrCode, set, title, crest])
-               .then(([cardBack, Common, Uncommon, Rare, Special, qrCode, set, title, crest]) => {
+
+        const title = getCircularText(deck.name, 1700, 75);
+        Promise.all([cardBack, Common, Uncommon, Rare, Special, set, title, crest, qrCode])
+               .then(([cardBack, Common, Uncommon, Rare, Special, set, title, crest, qrCode]) => {
+                   const line1 = new fabric.Line([55, 165, 295, 165], lineStyle);
+                   const line2 = new fabric.Line([55, 543, 295, 543], lineStyle);
+                   const line3 = new fabric.Line([310, 260, 550, 260], lineStyle);
+                   const text = new fabric.Text('DECK LIST', { ...fontProps, fontWeight: 200 });
                    const Rarities = { Common, Uncommon, Rare, Special };
-                   qrCode.set({ left: 329, top: 611 }).scaleToWidth(155);
-                   set.set({ left: 232, top: 92 }).scaleToWidth(20);
-                   crest.set({ left: 500, top: 735 }).scaleToWidth(50);
-                   canvas.add(cardBack)
-                         .add(qrCode)
-                         .add(set)
-                         .add(title)
-                         .add(crest);
+                   cardBack.scaleToWidth(600);
+                   text.set({ left: 255, top: 100 });
+                   qrCode.set({ left: 331, top: 614 }).scaleToWidth(150);
+                   set.set({ left: 232, top: 98 }).scaleToWidth(20);
+                   crest.set({ left: 504, top: 749 }).scaleToWidth(50);
+                   title.set({ left: 0 });
+                   canvas.add(cardBack, line1, line2, line3, qrCode, set, title, text, crest);
 
                    const houseProm = houses.sort().map((house, index) => {
                        return new Promise(houseRes => {
                            loadImage(`../card_images/cardback/decklist_houses/${house}.png`).then(img => {
-                               img.set({ left: houseData[index].x, top: houseData[index].y })
+                               img.set({
+                                   left: houseData[index].x,
+                                   top: houseData[index].y,
+                                   shadow: new fabric.Shadow(shadowProps)
+                               })
                                   .scaleToWidth(30)
-                                  .scaleToHeight(30)
-                                  .setShadow({ color: 'gray', offsetX: 10, offsetY: 10, blur: 3 });
+                                  .scaleToHeight(30);
+
                                const houseText = new fabric.Text(houses_languages[lang][house], {
                                    fontWeight: lang === 'ko' ? 100 : 800,
                                    fontFamily: 'Keyforge',
@@ -117,27 +134,21 @@ const buildDeckList = ({ houses, cards, expansion, ...deck }, lang = 'en') => {
                                y = y + 44;
                            }
 
-                           const fontProps = {
-                               fontWeight: 800,
-                               fontFamily: 'Keyforge',
-                               textAlign: 'left',
-                               fill: 'black',
-                               fontSize: 20
-                           };
                            const rarity = new fabric.Image(Rarities[card.rarity === 'FIXED' || card.rarity ===
                                                                     'Variant' ? 'Special' : card.rarity].getElement())
-                               .set({ left: x, top: y })
-                               .scaleToWidth(cardData.size)
-                               .setShadow({ color: 'gray', offsetX: 10, offsetY: 10, blur: 3 });
-                           const number = new fabric.Text(card.card_number, fontProps).set({ left: x + 22, top: y });
+                               .set({ left: x, top: y, shadow: new fabric.Shadow(shadowProps) })
+                               .scaleToWidth(cardData.size);
+                           const number = new fabric.Text(card.card_number, {
+                                   ...fontProps,
+                                   fill: card.is_enhanced ? '#0081ad' : 'black'
+                               }
+                           ).set({ left: x + 22, top: y });
 
-                           if (card.is_enhanced) {
-                               fontProps.fill = '#0081ad';
-                           }
 
                            const title = new fabric.Text(name, {
                                ...fontProps,
-                               fontWeight: 300
+                               fontWeight: 300,
+                               fill: card.is_enhanced ? '#0081ad' : 'black'
                            }).set({ left: x + 60, top: y });
 
                            canvas.add(number).add(rarity).add(title);
@@ -147,8 +158,7 @@ const buildDeckList = ({ houses, cards, expansion, ...deck }, lang = 'en') => {
                            if (card.is_maverick) {
                                const maverick = await loadImage('../card_images/cardback/Maverick.png');
                                const maverickImage = new fabric.Image(maverick.getElement())
-                                   .set({ left: iconX, top: y })
-                                   .setShadow({ color: 'gray', offsetX: 10, offsetY: 10, blur: 5 })
+                                   .set({ left: iconX, top: y, shadow: new fabric.Shadow(shadowProps) })
                                    .scaleToHeight(cardData.size);
                                canvas.add(maverickImage);
                                iconX = iconX + 20;
@@ -157,8 +167,7 @@ const buildDeckList = ({ houses, cards, expansion, ...deck }, lang = 'en') => {
                            if (card.is_legacy) {
                                const legacy = await loadImage('../card_images/cardback/Legacy.png');
                                const legacyImage = new fabric.Image(legacy.getElement())
-                                   .set({ left: iconX, top: y })
-                                   .setShadow({ color: 'gray', offsetX: 10, offsetY: 10, blur: 5 })
+                                   .set({ left: iconX, top: y, shadow: new fabric.Shadow(shadowProps) })
                                    .scaleToHeight(cardData.size);
                                canvas.add(legacyImage);
                            }
@@ -166,8 +175,7 @@ const buildDeckList = ({ houses, cards, expansion, ...deck }, lang = 'en') => {
                            if (card.is_anomaly) {
                                const anomaly = await loadImage('../card_images/cardback/Anomaly.png');
                                const anomalyImage = new fabric.Image(anomaly.getElement())
-                                   .set({ left: iconX, top: y })
-                                   .setShadow({ color: 'gray', offsetX: 10, offsetY: 10, blur: 5 })
+                                   .set({ left: iconX, top: y, shadow: new fabric.Shadow(shadowProps) })
                                    .scaleToHeight(cardData.size);
                                canvas.add(anomalyImage);
                            }
@@ -176,13 +184,13 @@ const buildDeckList = ({ houses, cards, expansion, ...deck }, lang = 'en') => {
                                for(const enhancement of card.enhancements) {
                                    const enhancementImg = await loadImage(`../card_images/cardback/enhancements/${enhancement}.png`);
                                    const enhancementElement = new fabric.Image(enhancementImg.getElement())
-                                       .set({ left: iconX, top: y })
-                                       .setShadow({ color: 'gray', offsetX: 2, offsetY: 2, blur: 2 })
+                                       .set({ left: iconX, top: y, shadow: new fabric.Shadow(shadowProps) })
                                        .scaleToHeight(cardData.size);
                                    canvas.add(enhancementElement);
                                    iconX = iconX + 25;
                                }
                            }
+
                            cardRes();
                        });
                    });

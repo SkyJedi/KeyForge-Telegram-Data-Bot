@@ -33,8 +33,8 @@ const buildDeck = (ctx, deck, flags) => {
             type => cardStats.rarity[type] ? `${cardStats.rarity[type]} ${type}` : false).filter(Boolean).join(' • ');
         description += ([mavericks, legacy, anomaly].some(type => type) ? ' • ' : '') +
             [mavericks, legacy, anomaly].filter(type => type).join(' • ') + '\n';
-        description += `${dokStats.sas}  •  ${dokStats.sasStar}\n${dokStats.deckAERC}\n`;
-        description += `[Official](https://www.keyforgegame.com/deck-details/${deck.id}?powered_by=archonMatrixTelegram) • [Decks of KeyForge](https://decksofkeyforge.com/decks/${deck.id}?powered_by=archonMatrixTelegram)`;
+        description += `${dokStats.sas}  •  ${dokStats.sasStar}\n`;
+        description += `[Official](https://www.keyforgegame.com/deck-details/${deck.id}?powered_by=archonMatrixTelegram) • [AA](https://archonarcana.com/Deck:${deck.id}?powered_by=archonMatrixDiscord) • [DoK](https://decksofkeyforge.com/decks/${deck.id}?powered_by=archonMatrixTelegram)`;
         const stream = attachment.createJPEGStream();
         stream.on('end', () => attachment.dispose());
         main.sendImageMessage(ctx, `${deck.name} • ${set} • ${description}`, stream);
