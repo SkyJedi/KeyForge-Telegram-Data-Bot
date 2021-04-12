@@ -1,5 +1,4 @@
-const Telegraf = require('telegraf');
-const Extra = require('telegraf/extra');
+const { Telegraf } = require('telegraf')
 const config = require('./config');
 const knownCommands = require('./functions/');
 const { version } = require('./package');
@@ -112,8 +111,10 @@ bot.catch((err, ctx) => {
 	console.log(`Ooops, encountered an error for ${ctx.updateType}`, err);
 });
 
-const sendImageMessage = (ctx, message, image) => ctx.replyWithPhoto({source: image}, Extra.caption(message).markdown());
-const sendMessage = (ctx, message) => ctx.reply(message, Extra.markdown());
+const sendImageMessage = async (ctx, message, image) => {
+	ctx.replyWithPhoto({source: image}, {caption: message, parse_mode: 'Markdown', disable_web_page_preview: true});
+}
+const sendMessage = (ctx, message) => ctx.replyWithMarkdown(message, {disable_web_page_preview: true});
 
 exports.sendImageMessage = sendImageMessage;
 exports.sendMessage = sendMessage;

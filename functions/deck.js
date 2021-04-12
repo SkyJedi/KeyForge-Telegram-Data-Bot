@@ -44,7 +44,7 @@ const buildDeck = (ctx, deck, flags) => {
 const getCardStats = (cards) => {
     return {
         amber: cards.reduce((acc, card) => acc + card.amber, 0),
-        card_type: cards.reduce((acc, card) => ({ ...acc, [card.card_type]: acc[card.card_type] + 1 }),
+        card_type: cards.reduce((acc, card) => ({ ...acc, [card.card_type.replace(/\d+/g, '')]: acc[card.card_type.replace(/\d+/g, '')] + 1 }),
             { Action: 0, Artifact: 0, Creature: 0, Upgrade: 0 }
         ),
         rarity: cards.reduce((acc, card) =>
