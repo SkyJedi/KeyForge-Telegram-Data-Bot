@@ -17,17 +17,17 @@ const buildDeck = (ctx, deck, flags) => {
     const attachment = buildDeckList(deck, lang);
 
     Promise.all([dokStats, attachment]).then(([dokStats, attachment]) => {
-        const cardStats = getCardStats(deck.cards);
+        const cardStats = getCardStats(deck.cards.filter(x => !x.is_non_deck));
         const mavericks = cardStats.is_maverick > 0 ? `${cardStats.is_maverick} Maverick` : false;
         const anomaly = cardStats.is_anomaly > 0 ? `${cardStats.is_anomaly} Anomaly}` : false;
         const legacy = deck.set_era_cards.Legacy.length > 0 ? `${deck.set_era_cards.Legacy.length} Legacy` : false;
         const set = get(sets.filter(set => deck.expansion === set.set_number), '[0].flag', 'ERROR');
         let description = deck._links.houses.map(house => house).join(' • ');
         description += deck.wins === 0 && deck.losses ===
-                       0 ? '\n' : ` • ${deck.power_level} Power • ${deck.chains} Chains} • ${deck.wins}W/${deck.losses}L\n`;
+        0 ? '\n' : ` • ${deck.power_level} Power • ${deck.chains} Chains} • ${deck.wins}W/${deck.losses}L\n`;
         description += Object.keys(cardStats.card_type)
-                             .map(type => `${cardStats.card_type[type]} ${type}s`)
-                             .join(' • ') + '\n';
+            .map(type => cardStats.card_type[type] ? `${cardStats.card_type[type]} ${type}s` : false).filter(Boolean)
+            .join(' • ') + '\n';
         description += `${cardStats.amber} Æmber • `;
         description += ['Special', 'Rare', 'Uncommon', 'Common'].map(
             type => cardStats.rarity[type] ? `${cardStats.rarity[type]} ${type}` : false).filter(Boolean).join(' • ');
@@ -44,8 +44,11 @@ const buildDeck = (ctx, deck, flags) => {
 const getCardStats = (cards) => {
     return {
         amber: cards.reduce((acc, card) => acc + card.amber, 0),
-        card_type: cards.reduce((acc, card) => ({ ...acc, [card.card_type.replace(/\d+/g, '')]: acc[card.card_type.replace(/\d+/g, '')] + 1 }),
-            { Action: 0, Artifact: 0, Creature: 0, Upgrade: 0 }
+        card_type: cards.reduce((acc, card) => ({
+                ...acc,
+                [card.card_type.replace(/\d+/g, '')]: acc[card.card_type.replace(/\d+/g, '')] + 1
+            }),
+            { Action: 0, Artifact: 0, Creature: 0, Upgrade: 0, Evil_Twin: 0 }
         ),
         rarity: cards.reduce((acc, card) =>
             ({

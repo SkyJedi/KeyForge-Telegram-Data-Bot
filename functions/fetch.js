@@ -1,17 +1,24 @@
 const axios = require('axios');
+const { fabric } = require('fabric');
 const Fuse = require('fuse.js');
 const levenshtein = require('js-levenshtein');
-const {db} = require('./firestore');
+const db = require('./firestore');
 const uuid = require('uuid').v4;
-const {get, filter, findIndex, sortBy, round, shuffle, uniqBy} = require('lodash');
+const { get, filter, findIndex, sortBy, round, shuffle, uniqBy, find } = require('lodash');
 
-const {deckSearchAPI, dokAPI, dokKey, twilioAccountSid, twilioToken, twilioSender, twilioReceiver} = require('../config');
-const {langs, sets, houses, cardTypes} = require('../card_data');
-const faq = require('../card_data/faq');
+const { deckSearchAPI, dokAPI, dokKey, aaAPI, aaConfigFaq, aaConfigSpoiler, twilioAccountSid, twilioToken, twilioSender, twilioReceiver } = require('../config');
+const { langs, sets, houses, cardTypes } = require('../card_data');
+const erratas = require('../card_data/erratas.json');
+const timing = require('../card_data/timing');
 const twilio = require('twilio')(twilioAccountSid, twilioToken);
 const deckIdRegex = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
+const { imageCDN } = require('../config');
 
-const text = (msg) => twilio.messages.create({from: twilioSender, to: twilioReceiver, body: msg});
+const text = (msg) => twilio.messages.create({ from: twilioSender, to: twilioReceiver, body: msg });
+
+const loadImage = (imgPath) => {
+    return new Promise(resolve => fabric.Image.fromURL(imageCDN + imgPath, image => resolve(image)));
+};
 
 const fetchDeck = (params) => new Promise((resolve, reject) => {
     const data = params.map(param => deckIdRegex.test(param) ? fetchDeckId(param.match(deckIdRegex)[0]) : fetchDeckNameMV(param));
@@ -62,6 +69,40 @@ const fetchDeckNameMV = (name) => new Promise((resolve, reject) => {
     }).catch(() => reject());
 });
 
+const buildEnhancements = (deck) => {
+    if (deck.cards.every(x => !x.is_enhanced)) return false;
+    const enhancements = { aember: 0, capture: 0, damage: 0, draw: 0 };
+    deck.cards.forEach(card => {
+        if (card.card_text.startsWith('Enhance ')) {
+            let text = card.card_text.split(' ')[1].replace('.', '').split('');
+            text.forEach(x => {
+                switch (x) {
+                    case 'P':
+                        break;
+                    case 'A':
+                    case '\uf360':
+                        enhancements.aember++;
+                        break;
+                    case 'T':
+                    case '\uf565':
+                        enhancements.capture++;
+                        break;
+                    case 'D':
+                    case '\uf361':
+                        enhancements.damage++;
+                        break;
+                    case 'R':
+                    case '\uf36e':
+                        enhancements.draw++;
+                        break;
+                    default:
+                        break;
+                }
+            });
+        }
+    });
+    return enhancements;
+};
 const buildCardList = (deck) => new Promise(resolve => {
     const cardRefs = deck.cards.map(card => db.collection('AllCards').doc(card));
     return db.runTransaction(transaction => {
@@ -73,10 +114,12 @@ const buildCardList = (deck) => new Promise(resolve => {
                     card.is_legacy = deck.set_era_cards.Legacy.includes(card.id);
                     list.push(card);
                 } else {
-                    fetchUnknownCard(deck.cards[x], deck.id).then(unknownCard => {
-                        unknownCard.is_legacy = deck.set_era_cards.Legacy.includes(unknownCard.id);
-                        list.push(unknownCard);
-                    });
+                    if (deck.id) {
+                        fetchUnknownCard(deck.cards[x], deck.id).then(unknownCard => {
+                            unknownCard.is_legacy = deck.set_era_cards.Legacy.includes(unknownCard.id);
+                            list.push(unknownCard);
+                        });
+                    }
                 }
             }
             resolve(sortBy(list, ['house', 'card_number']));
@@ -95,10 +138,16 @@ const fetchUnknownCard = (cardId, deckId) => new Promise(resolve => {
     });
 });
 const fetchMavCard = (name, house) => new Promise((resolve, reject) => {
-    db.collection('AllCards').limit(1).where('card_title', '==', name).where('house', '==', house).get().then(snapshot => {
-        if (snapshot.size > 0) snapshot.forEach(doc => resolve(doc.data()));
-        else reject();
-    }).catch(() => reject());
+    db.collection('AllCards')
+        .limit(1)
+        .where('card_title', '==', name)
+        .where('house', '==', house)
+        .get()
+        .then(snapshot => {
+            if (snapshot.size > 0) snapshot.forEach(doc => resolve(doc.data()));
+            else reject();
+        })
+        .catch(() => reject());
 });
 const fetchDeckWithCard = (cardId) => new Promise((resolve, reject) => {
     db.collection('decks').limit(10).where('cards', 'array-contains', cardId).get().then(snapshot => {
@@ -114,31 +163,41 @@ const fetchDeckWithCard = (cardId) => new Promise((resolve, reject) => {
         } else reject();
     }).catch(() => reject());
 });
-const fetchRandomDecks = (expansion) => new Promise((resolve, reject) => {
+const fetchRandomDecks = ({ expansion, houses = [] }) => new Promise((resolve, reject) => {
     const key = uuid();
     let decksRef = db.collection('decks').limit(1);
     if (expansion) decksRef = decksRef.where('expansion', '==', expansion);
+    if (houses.length > 0) {
+        if (houses.length === 3) decksRef = decksRef.where('_links.houses', '==', houses);
+        else decksRef = decksRef.where('_links.houses', 'array-contains-any', houses);
+    }
     decksRef.where('id', '>=', key).get().then(snapshot => {
         if (snapshot.size > 0) snapshot.forEach(doc => resolve(doc.data()));
         else {
             decksRef.where('id', '<', key).get().then(snapshot => {
                 if (snapshot.size > 0) snapshot.forEach(doc => resolve(doc.data()));
                 else resolve(false);
-            }).catch(console.error);
+            }).catch(err => {
+                console.error(err);
+                reject();
+            });
         }
-    }).catch(() => reject());
+    }).catch(err => {
+        console.error(err);
+        reject();
+    });
 });
 
 const fetchDoK = (deckID) => {
     return new Promise(resolve => {
         axios.get(`${dokAPI}${deckID}`, dokKey).then(response => {
             if (response.data) {
-                const {sasRating = 0, sasPercentile = 0} = response.data.deck,
+                const { sasRating = 0, sasPercentile = 0 } = response.data.deck,
                     sas = `${round(sasRating, 2)} SAS`,
                     sasStar = sasStarRating(sasPercentile);
-                resolve({sas, sasStar});
-            } else resolve({sas: 'Unable to Retrieve SAS', sasStar: 'Unable to Retrieve sasStars'});
-        }).catch(() => resolve({sas: 'Unable to Retrieve SAS', sasStar: 'Unable to Retrieve sasStars'}));
+                resolve({ sas, sasStar });
+            } else resolve({ sas: 'Unable to Retrieve SAS', sasStar: 'Unable to Retrieve sasStars' });
+        }).catch(() => resolve({ sas: 'Unable to Retrieve SAS', sasStar: 'Unable to Retrieve sasStars' }));
     });
 };
 
@@ -171,10 +230,10 @@ const sasStarRating = (x) => {
     }
 };
 
-const fetchCard = (search, flags) => {
+const fetchCard = (search, flags = []) => {
     const set = getFlagSet(flags);
     const lang = getFlagLang(flags);
-    const house = getFlagHouse(flags)[0];
+    const house = getFlagHouse(flags);
     const options = {
         shouldSort: true,
         tokenize: true,
@@ -191,9 +250,16 @@ const fetchCard = (search, flags) => {
             }]
     };
     let cards = (set ? require(`../card_data/${lang}/${set}`) : require(`../card_data/`)[lang]);
-    if (house) {
+
+    if (house.length > 0) {
         cards = cards.filter(x => x.house === house);
     }
+
+    if (search.includes('evil twin')) {
+        search = search.replace('evil twin', '');
+        flags = flags.concat('et');
+    }
+
     const fuse = new Fuse(cards, options);
     let results = fuse.search(search);
     if (0 >= results.length) return;
@@ -206,19 +272,29 @@ const fetchCard = (search, flags) => {
     let final = get(results, '[0].item');
     if (final) {
         final = cards.filter(x => x.card_title === final.card_title);
+        if (flags.includes('et')) {
+            final = final.filter(x => x.rarity === 'Evil Twin');
+        }
         final = sortBy(final, 'expansion').reverse()[0];
     }
     return final;
 };
+
 const fetchReprints = (card, flags) => {
     const lang = getFlagLang(flags);
     const cards = require(`../card_data/`)[lang];
     return uniqBy(cards.filter(x => x.card_title === card.card_title), 'card_number');
 };
+
+const fetchErrata = (card) => {
+    return find(erratas, ['card_title', card.card_title]);
+};
+
 const fetchText = (search, flags, type = 'card_text') => {
-    const set = getFlagSet(flags),
-        lang = getFlagLang(flags),
-        cardType = getFlagCardType(flags);
+    const set = getFlagSet(flags);
+    const lang = getFlagLang(flags);
+    const cardType = getFlagCardType(flags);
+    const number = getFlagNumber(flags);
     search = search.split(' ').filter(x => x.length > 2).join(' ');
     const options = {
         shouldSort: true,
@@ -226,16 +302,43 @@ const fetchText = (search, flags, type = 'card_text') => {
         matchAllTokens: true,
         includeScore: true,
         threshold: 0.2,
-        keys: [type],
+        keys: [type]
     };
-    const cards = (set ? require(`../card_data/${lang}/${set}`) : require(`../card_data/`)[lang]);
+    let cards = (set ? require(`../card_data/${lang}/${set}`) : require(`../card_data/`)[lang]);
     const fuse = new Fuse(cards, options);
-    let results = fuse.search(search);
-    results = results.filter(x => x.score < 0.6);
-    if (cardType) results = results.filter(x => x.item.card_type === cardType);
-    return sortBy(results.map(item => item.item), ['card_title']);
+    if (search.length > 0) {
+        cards = fuse.search(search);
+        cards = cards.filter(x => x.score < 0.6);
+        cards = cards.map(item => item.item);
+    }
+    if (cardType) cards = cards.filter(x => x.card_type === cardType);
+    if (number) cards = cards.filter(x => x.traits && x.traits.split('•').length === number);
+    return sortBy(cards, ['card_title']);
 };
-const fetchFAQ = (text) => {
+
+const fetchFAQ = (card) => {
+    return new Promise(resolve => {
+        aaConfigFaq.params.where = `((RulesPages IS NULL AND RulesText like '%${card.card_title}%') OR (RulesPages IS NOT NULL AND RulesPages LIKE '%•${card.card_title}•%')) AND (RulesType='FFGRuling' OR RulesType='FAQ' OR RulesType='Commentary' OR RulesType='OutstandingIssues')`;
+        axios.get(aaAPI, aaConfigFaq).then(response => {
+            if (response.data) {
+                resolve(response.data.cargoquery);
+            } else resolve(null);
+        });
+    });
+};
+
+const fetchSpoiler = (search) => {
+    return new Promise(resolve => {
+        aaConfigSpoiler.params.where = `(Name LIKE '%${search}%')`;
+        axios.get(aaAPI, aaConfigSpoiler).then(response => {
+            if (response.data) {
+                resolve(response.data.cargoquery);
+            } else resolve(null);
+        });
+    });
+};
+
+const fetchTiming = (text) => {
     const options = {
         shouldSort: true,
         tokenize: true,
@@ -243,44 +346,69 @@ const fetchFAQ = (text) => {
         includeScore: true,
         threshold: 0.3,
         keys: [
-            {name: 'question', weight: 0.6},
-            {name: 'answer', weight: 0.4},
-        ],
+            { name: 'phase', weight: 0.9 },
+            { name: 'steps', weight: 0.4 }
+        ]
     };
-    const fuse = new Fuse(faq, options);
+    const fuse = new Fuse(timing, options);
     let results = fuse.search(text);
-    results = sortBy(results.filter(x => x.score < 0.6), 'score');
+    results = results.map(result => {
+        result.score = result.item.phase.split(' ').map(x => {
+            return levenshtein(x, text);
+        }).sort()[0];
+        return result;
+    });
+
+    results = sortBy(results, 'score');
+
     return results.map(item => item.item)[0];
 };
 
 const getCardLink = (card) => {
     const AllCards = require(`../card_data/en/${card.expansion}`);
     card = AllCards.find(x => x.card_number === card.card_number);
-    return encodeURI(`https://archonarcana.com/${card.card_title.replace(' ', '_').replace(/[\[\]']+/g, '')}?powered_by=archonMatrixTelegram`);
+    return encodeURI(`https://archonarcana.com/${card.card_title.replace(/\s+/g, '_')
+        .replace(/[\[\]']+/g, '')}?powered_by=archonMatrixDiscord`);
 };
-const getFlagCardType = (flags) => get(filter(cardTypes, cardType => flags.includes(cardType.toLowerCase())), '[0]');
-const getFlagSet = (flags) => get(filter(sets, set => flags.includes(set.flag.toLowerCase())), '[0].set_number');
-const getSet = (number) => get(sets.filter(set => number === set.set_number), '[0].flag', 'ERROR');
-const getFlagHouse = (flags) => flags.filter(x => Object.keys(houses).includes(x)).map(x => houses[x]).sort();
-const getFlagLang = (flags) => get(filter(flags, flag => langs.includes(flag)), '[0]', 'en');
-const getFlagNumber = (flags, defaultNumber = 0) => +(get(filter(flags, flag => Number.isInteger(+flag)), '[0]', defaultNumber));
+const getCardLinkDoK = (card) => {
+    const AllCards = require(`../card_data/en/${card.expansion}`);
+    card = AllCards.find(x => x.card_number === card.card_number);
+    return encodeURI(`https://decksofkeyforge.com/cards/${card.card_title.replace(/\s+/g, '-').toLowerCase()
+        .replace(/[\[\]Ææ']+/g, '')}?powered_by=archonMatrixDiscord`);
+};
+const getFlagCardType = (flags = []) => get(filter(cardTypes, cardType => flags.includes(cardType.toLowerCase())), '[0]');
+const getFlagSet = (flags = []) => get(filter(sets, set => flags.includes(set.flag.toLowerCase())), '[0].set_number');
+const getSet = (number = []) => get(sets.filter(set => number === set.set_number), '[0].flag', 'ERROR');
+const getFlagHouse = (flags = []) => get(flags.filter(x => Object.keys(houses).includes(x)).map(x => houses[x]).sort(), '[0]', []);
+const getFlagLang = (flags = []) => get(filter(flags, flag => langs.includes(flag)), '[0]', 'en');
+const getFlagNumber = (
+    flags = [], defaultNumber = 0) => +(get(filter(flags, flag => Number.isInteger(+flag)), '[0]', defaultNumber));
 
 const format = (text) => text.replace(/<I>/gi, '*').replace(/<B>/gi, '**');
 
-exports.fetchDeck = fetchDeck;
-exports.fetchDeckWithCard = fetchDeckWithCard;
-exports.fetchCard = fetchCard;
-exports.fetchReprints = fetchReprints;
-exports.fetchText = fetchText;
-exports.fetchDoK = fetchDoK;
-exports.fetchFAQ = fetchFAQ;
-exports.fetchUnknownCard = fetchUnknownCard;
-exports.fetchRandomDecks = fetchRandomDecks;
-exports.getCardLink = getCardLink;
-exports.getFlagLang = getFlagLang;
-exports.getFlagHouse = getFlagHouse;
-exports.getFlagSet = getFlagSet;
-exports.getSet = getSet;
-exports.getFlagNumber = getFlagNumber;
-exports.format = format;
-exports.fetchMavCard = fetchMavCard;
+module.exports = {
+    buildEnhancements,
+    buildCardList,
+    fetchCard,
+    fetchDeck,
+    fetchDeckWithCard,
+    fetchDoK,
+    fetchErrata,
+    fetchFAQ,
+    fetchMavCard,
+    fetchRandomDecks,
+    fetchReprints,
+    fetchSpoiler,
+    fetchText,
+    fetchTiming,
+    fetchUnknownCard,
+    format,
+    getCardLink,
+    getCardLinkDoK,
+    getFlagHouse,
+    getFlagLang,
+    getFlagNumber,
+    getFlagSet,
+    getSet,
+    loadImage
+};
